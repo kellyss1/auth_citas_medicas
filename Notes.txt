@@ -213,3 +213,5 @@ router.beforeEach((to, from, next) => {
 export default router
 
 ___________________________ index.js
+
+Dios Mio Salvame
