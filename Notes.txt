@@ -1,0 +1,215 @@
+quarkus.datasource.db-kind=postgresql
+quarkus.datasource.username=postgres
+quarkus.datasource.password=postgres
+quarkus.datasource.jdbc.url=jdbc:postgresql://localhost:5432/citas_medicas
+ 
+quarkus.hibernate-orm.database.generation=update
+quarkus.hibernate-orm.log.sql=true
+
+quarkus.resteasy.path=/citas/api/v1.0
+
+quarkus.http.port=8081
+
+quarkus.http.cors.enabled=true
+quarkus.http.cors.origins=http://localhost:5173
+
+mp.jwt.verify.publickey.location=publicKey.pem
+mp.jwt.verify.issuer=citas-auth
+
+________________________________ back
+
+-----BEGIN PUBLIC KEY-----
+MIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEAl4TkRTPGp8xl+o+f3Y1f
+n/LgEa+CgjdxMUurpDquLVkWskeAcEkptViJO4MMKbmjxjSCDenpLNxzKSRE5iGK
+SjtAQKhKfiWQhBYT9FWWDtMk8n/0VcHv1Qo5pNe70mFjhLZ/sqdBzEM1uJIVdbqo
+NSQTYKF1r76J+fR3+ESBOX45wmc+izgWgZTt0S2C2oljLuMbmh/AeGj2PwSSFaTu
+n0XkpsxrCXQeSW32fUFM9vYXo7a5a8y5+nj/HgQfNBUHljxHHdbR4upBOHmCY8KJ
+ViPwzmxwfq84W7nbIJ8efMoIZDWOo9/cYAjrZrtWtwXzkcEJi9ZKvYga/OkKA1kv
+9QIDAQAB
+-----END PUBLIC KEY-----
+
+
+___________________________ publicKey.pem
+
+import axios from 'axios';
+
+const AUTH_URL = 'http://localhost:8082/auth/token';
+
+export function getAuthToken() {
+  return localStorage.getItem('authToken');
+}
+
+export function isTokenValid() {
+  const token = getAuthToken();
+  const expiresAt = Number(localStorage.getItem('tokenExpiresAt'));
+  return token && expiresAt && Date.now() < expiresAt * 1000;
+}
+
+export function setAuth(token, expiresAt) {
+  localStorage.setItem('authToken', token);
+  localStorage.setItem('tokenExpiresAt', expiresAt);
+  localStorage.setItem('estaAutenticado', 'true');
+}
+
+export function clearAuth() {
+  localStorage.removeItem('authToken');
+  localStorage.removeItem('tokenExpiresAt');
+  localStorage.setItem('estaAutenticado', 'false');
+}
+
+export async function getToken(username, password) {
+  try {
+    const { data } = await axios.get(AUTH_URL, {
+      params: { user: username, password }
+    });
+    return { token: data.accessToken, expiresAt: data.expiresAt };
+  } catch (error) {
+    console.error('Error al obtener el token:', error);
+    throw error;
+  }
+}
+
+___________________________ UsuarioClient.js
+
+import axios from "axios";
+import { getAuthToken, isTokenValid, clearAuth } from "./UsuarioClient";
+
+const URL = 'http://localhost:8081/citas/api/v1.0/pacientes'
+
+axios.interceptors.request.use((config) => {
+    if (isTokenValid()) {
+        const token = getAuthToken();
+        config.headers.Authorization = `Bearer ${token}`;
+    } else {
+        clearAuth();
+    }
+    return config;
+});
+
+const listarTodos = async () => {
+    const data = axios.get(URL).then(response => response.data); 
+    console.log(data);
+    return data;
+}
+
+const listarCitas = async (id) => {
+    const data = axios.get(`${URL}/${id}/citas`).then(response => response.data);
+    console.log(data);
+    return data;
+}
+
+const crear = async (body) => {
+    const data = axios.post(URL,body).then(response => response.data);
+    console.log(data);
+    return data;
+}
+
+const actualizar = async(id, body) => {
+    const data = axios.put(`${URL}/${id}`, body).then(response => response.data);
+    console.log(data);
+    return data;
+}
+
+const actualizarParcialmente = async(id, body) => {
+    const data = axios.patch(`${URL}/${id}`, body).then(response => response.data)
+    console.log(data)
+    return data;
+}
+
+const eliminar = async(id) => {
+    const data = axios.delete(`${URL}/${id}`).then(response => response.data)
+    console.log(`Paciente con ID ${id} eliminado`)
+}
+
+export async function ListarTodosFachada() {
+    return await listarTodos();
+}
+
+export async function ListarCitasFachada(id) {
+    return await listarCitas(id);
+}
+
+export async function CrearPacienteFachada(body) {
+    return await crear(body);
+}
+
+export async function ActualizarPacienteFachada(id, body) { 
+    return await actualizar(id, body);
+}
+
+export async function ActualizarParcialmentePacienteFachada(id, body) {
+    return await actualizarParcialmente(id, body);
+}
+
+export async function EliminarPacienteFachada(id) {
+    return await eliminar(id);
+}
+
+
+__________________________________ PacienteClient.js
+
+
+import { createRouter, createWebHistory } from 'vue-router'
+import HomeView from '../views/HomeView.vue'
+import PacienteView from '../views/PacienteView.vue'
+import DoctorView from '../views/DoctorView.vue'
+import LoginView from '@/views/LoginView.vue'
+import CitaView from '@/views/CitasView.vue'
+import { isTokenValid } from '../clients/UsuarioClient';
+
+const router = createRouter({
+  history: createWebHistory(import.meta.env.BASE_URL),
+  routes: [
+    {
+      path: '/',
+      name: 'home',
+      component: HomeView,
+      meta: { requiresAuth: false, esPublico: true }
+    },
+    {
+      path: '/pacientes',
+      name: 'pacientes',
+      component: PacienteView,
+      meta: { requiresAuth: true, esPublico: false }
+    },
+    {
+    path: '/login',
+    name: 'login',
+    component: LoginView,
+  },
+  {
+    path: '/doctores',
+    name: 'doctores',
+    component: DoctorView,
+    meta: { requiresAuth: true, esPublico: false }
+  },
+  {
+    path: '/citas',
+    name: 'citas',
+    component: CitaView,
+    meta: { requiresAuth: true, esPublico: false }
+  }
+  ],
+});
+
+// Configuracion del Guardian
+router.beforeEach((to, from, next) => {
+  if (to.meta.requiresAuth) {
+    if (!isTokenValid()) {
+      console.log("Ruta protegida, token inválido o expirado");
+      console.log("Redirigiendo a la pagina de login...");
+      next({ name: 'login' });
+    } else {
+      console.log("Ruta protegida, token de autenticacion valido");
+      next();
+    }
+  } else {
+    // No requiere autenticacion
+    console.log("Pase Libre, no requiere autenticacion");
+    next();
+  }
+});
+
+export default router
+
+___________________________ index.js
